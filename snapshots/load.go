@@ -9,12 +9,11 @@ import (
 	"github.com/questdb/go-questdb-client"
 	"github.com/samber/lo"
 	"log"
-	"time"
 )
 
 func Load(ctx context.Context, configuration *config.Config, allSymbols []string) {
-	start := time.Now()
 	log.Println("Loading snapshots...")
+
 	db := database.NewDatabase(ctx, configuration)
 	db.DropTable("sip_observer_snapshots")
 	defer func(db *database.Database) {
@@ -124,7 +123,5 @@ func Load(ctx context.Context, configuration *config.Config, allSymbols []string
 		log.Fatal(err)
 	}
 
-	elapsed := time.Since(start)
-
-	log.Printf("Loading snapshots...COMPLETED in %s for %d symbols\n", elapsed, count)
+	log.Printf("Loading snapshots...COMPLETED %d loaded\n", count)
 }

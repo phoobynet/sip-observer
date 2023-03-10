@@ -2,11 +2,9 @@ package reader
 
 import (
 	"context"
-	"errors"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata/stream"
 	"github.com/phoobynet/sip-observer/config"
-	"os"
 )
 
 type SIPReader struct {
@@ -16,15 +14,6 @@ type SIPReader struct {
 }
 
 func NewSIPReader(ctx context.Context, configuration *config.Config) (*SIPReader, error) {
-	if key := os.Getenv("APCA_API_KEY_ID"); key == "" {
-		return nil, errors.New("APCA_API_KEY_ID is not set")
-
-	}
-
-	if secret := os.Getenv("APCA_API_SECRET_KEY"); secret == "" {
-		return nil, errors.New("APCA_API_SECRET_KEY is not set")
-	}
-
 	client := stream.NewStocksClient(marketdata.SIP)
 
 	err := client.Connect(ctx)

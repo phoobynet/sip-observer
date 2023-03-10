@@ -9,11 +9,9 @@ import (
 	"github.com/questdb/go-questdb-client"
 	"github.com/samber/lo"
 	"log"
-	"time"
 )
 
 func Load(ctx context.Context, configuration *config.Config) []string {
-	start := time.Now()
 	log.Println("Loading assets...")
 	db := database.NewDatabase(ctx, configuration)
 	db.DropTable("sip_observer_assets")
@@ -62,7 +60,7 @@ func Load(ctx context.Context, configuration *config.Config) []string {
 		}
 	}
 
-	log.Printf("Loading assets...DONE in %s\n", time.Since(start))
+	log.Println("Loading assets...DONE")
 
 	return symbols
 }
