@@ -26,6 +26,8 @@ func main() {
 		log.Fatal(err)
 	}
 
+	log.Printf("Configuration: %+v\n\n", configuration)
+
 	readerCtx, readerCancel := context.WithCancel(context.Background())
 
 	tradeReader, err := reader.NewTradeReader(readerCtx, configuration)

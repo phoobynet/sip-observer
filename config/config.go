@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/phoobynet/sip-observer/file"
 	"github.com/phoobynet/sip-observer/utils"
@@ -38,6 +39,10 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	return config, nil
+}
+
+func (c *Config) String() string {
+	return fmt.Sprintf("title: %s, symbols: %v, db_host: %s", c.Title, c.Symbols, c.DBHost)
 }
 
 // clean removes any invalid characters from the ticker symbols, trims whitespace and converts to uppercase.
