@@ -1,0 +1,11 @@
+title = "Example"
+
+symbols = [
+    "AAPL",
+    "MSFT",
+    "TSLA",
+    "GOOG",
+    "AMZN",
+]
+
+db_host = "192.168.1.66:9009"
