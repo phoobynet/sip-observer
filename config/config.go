@@ -11,7 +11,7 @@ import (
 type Config struct {
 	Title   string
 	Symbols []string
-	DBHost  string
+	DBHost  string `toml:"db_host"`
 }
 
 func Load(configPath string) (*Config, error) {

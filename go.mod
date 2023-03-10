@@ -13,8 +13,10 @@ require (
 	github.com/klauspost/compress v1.11.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/questdb/go-questdb-client v1.0.3 // indirect
+	github.com/samber/lo v1.37.0 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.3.0 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
+	golang.org/x/exp v0.0.0-20220303212507-bbda1eaf7a17 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 )

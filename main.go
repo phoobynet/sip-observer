@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata/stream"
 	"github.com/phoobynet/sip-observer/config"
 	"github.com/phoobynet/sip-observer/reader"
@@ -11,11 +12,15 @@ import (
 	"os/signal"
 )
 
+var configurationFile string
+
 func main() {
+	flag.StringVar(&configurationFile, "config", "config.toml", "Configuration file")
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
 
-	configuration, err := config.Load("config.toml")
+	configuration, err := config.Load(configurationFile)
 
 	if err != nil {
 		log.Fatal(err)
@@ -54,9 +59,11 @@ func main() {
 				tradeWriter.Write(t)
 			case <-readerCtx.Done():
 				log.Println("Shutting down sip-observer reader")
+				_ = tradeReader.Disconnect()
 				return
 			case <-writerCtx.Done():
 				log.Println("Shutting down sip-observer writer")
+				_ = tradeWriter.Close()
 				return
 			}
 		}
@@ -65,5 +72,4 @@ func main() {
 	<-quit
 	readerCancel()
 	writerCancel()
-	//os.Exit(0)
 }
