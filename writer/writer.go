@@ -2,6 +2,7 @@ package writer
 
 import (
 	"context"
+	"fmt"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata/stream"
 	"github.com/phoobynet/sip-observer/config"
 	"github.com/questdb/go-questdb-client"
@@ -11,84 +12,122 @@ import (
 	"time"
 )
 
-type TradeWriter struct {
-	ctx              context.Context
-	sender           *questdb.LineSender
-	inputBuffer      []stream.Trade
-	writeTicker      *time.Ticker
-	logTicker        *time.Ticker
-	writeLock        sync.RWMutex
-	writeChan        chan []stream.Trade
-	writtenCount     int64
-	writtenCountLock sync.RWMutex
+type SIPWriter struct {
+	ctx                   context.Context
+	sender                *questdb.LineSender
+	logTicker             *time.Ticker
+	tradeInputBuffer      []stream.Trade
+	tradeWriteTicker      *time.Ticker
+	tradeWriteLock        sync.RWMutex
+	tradeWriteChan        chan []stream.Trade
+	tradeWrittenCount     int64
+	tradeWrittenCountLock sync.RWMutex
+	barInputBuffer        []stream.Bar
+	barWriteTicker        *time.Ticker
+	barWriteLock          sync.RWMutex
+	barWriteChan          chan []stream.Bar
+	barWrittenCount       int64
+	barWrittenCountLock   sync.RWMutex
 }
 
-func NewTradeWriter(ctx context.Context, configuration *config.Config) (*TradeWriter, error) {
-	sender, err := questdb.NewLineSender(ctx, questdb.WithAddress(configuration.DBHost))
+func NewSIPWriter(ctx context.Context, configuration *config.Config) (*SIPWriter, error) {
+	sender, err := questdb.NewLineSender(ctx, questdb.WithAddress(fmt.Sprintf("%s:%s", configuration.DBHost, configuration.DBILPPort)))
 
 	if err != nil {
 		return nil, err
 	}
 
-	writeTicker := time.NewTicker(time.Second)
-	writeChan := make(chan []stream.Trade, 10_000)
+	tradeWriteTicker := time.NewTicker(time.Second)
+	tradeWriteChan := make(chan []stream.Trade, 10_000)
+	barWriteTicker := time.NewTicker(5 * time.Second)
+	barWriteChan := make(chan []stream.Bar, 10_000)
 
 	logTicker := time.NewTicker(time.Second * 5)
 
-	tradeWriter := &TradeWriter{
-		ctx:         ctx,
-		sender:      sender,
-		writeTicker: writeTicker,
-		writeChan:   writeChan,
-		logTicker:   logTicker,
+	sipWriter := &SIPWriter{
+		ctx:              ctx,
+		sender:           sender,
+		logTicker:        logTicker,
+		tradeWriteTicker: tradeWriteTicker,
+		tradeWriteChan:   tradeWriteChan,
+		barWriteTicker:   barWriteTicker,
+		barWriteChan:     barWriteChan,
 	}
 
 	go func() {
 		for {
 			select {
-			case <-writeTicker.C:
-				tradeWriter.copyInputBuffer()
-			case trades := <-writeChan:
-				tradeWriter.flush(trades)
+			case <-tradeWriteTicker.C:
+				sipWriter.copyTradeInputBuffer()
+			case <-barWriteTicker.C:
+				sipWriter.copyBarInputBuffer()
+			case trades := <-tradeWriteChan:
+				sipWriter.flushTrades(trades)
+			case bars := <-barWriteChan:
+				sipWriter.flushBars(bars)
 			case <-logTicker.C:
-				tradeWriter.writtenCountLock.RLock()
-				log.Printf("Written %d trades", tradeWriter.writtenCount)
-				tradeWriter.writtenCountLock.RUnlock()
+				sipWriter.tradeWrittenCountLock.RLock()
+				sipWriter.barWrittenCountLock.RLock()
+				log.Printf("Trades: %d / Bars: %d", sipWriter.tradeWrittenCount, sipWriter.barWrittenCount)
+				sipWriter.tradeWrittenCountLock.RUnlock()
+				sipWriter.barWrittenCountLock.RUnlock()
 			}
-
 		}
 	}()
 
-	return tradeWriter, nil
+	return sipWriter, nil
 }
 
-func (w *TradeWriter) Write(trade stream.Trade) {
-	w.writeLock.Lock()
-	defer w.writeLock.Unlock()
+func (s *SIPWriter) WriteTrade(trade stream.Trade) {
+	s.tradeWriteLock.Lock()
+	defer s.tradeWriteLock.Unlock()
 
-	w.inputBuffer = append(w.inputBuffer, trade)
+	s.tradeInputBuffer = append(s.tradeInputBuffer, trade)
 }
 
-func (w *TradeWriter) Close() error {
-	w.writeTicker.Stop()
-	return w.sender.Close()
+func (s *SIPWriter) WriteBar(bar stream.Bar) {
+	s.barWriteLock.Lock()
+	defer s.barWriteLock.Unlock()
+
+	s.barInputBuffer = append(s.barInputBuffer, bar)
 }
 
-func (w *TradeWriter) copyInputBuffer() {
-	w.writeLock.Lock()
-	defer w.writeLock.Unlock()
+func (s *SIPWriter) Close() error {
+	s.tradeWriteTicker.Stop()
+	s.barWriteTicker.Stop()
 
-	tempBuffer := make([]stream.Trade, len(w.inputBuffer))
-	copy(tempBuffer, w.inputBuffer)
+	return s.sender.Close()
+}
+
+func (s *SIPWriter) copyTradeInputBuffer() {
+	s.tradeWriteLock.Lock()
+	defer s.tradeWriteLock.Unlock()
+
+	tempBuffer := make([]stream.Trade, len(s.tradeInputBuffer))
+	copy(tempBuffer, s.tradeInputBuffer)
 
 	// Clear the input buffer
-	w.inputBuffer = make([]stream.Trade, 0)
+	s.tradeInputBuffer = make([]stream.Trade, 0)
 
 	// Send the buffer to the write channel
-	w.writeChan <- tempBuffer
+	s.tradeWriteChan <- tempBuffer
 }
 
-func (w *TradeWriter) flush(trades []stream.Trade) {
+func (s *SIPWriter) copyBarInputBuffer() {
+	s.barWriteLock.Lock()
+	defer s.barWriteLock.Unlock()
+
+	tempBuffer := make([]stream.Bar, len(s.barInputBuffer))
+	copy(tempBuffer, s.barInputBuffer)
+
+	// Clear the input buffer
+	s.barInputBuffer = make([]stream.Bar, 0)
+
+	// Send the buffer to the write channel
+	s.barWriteChan <- tempBuffer
+}
+
+func (s *SIPWriter) flushTrades(trades []stream.Trade) {
 	var err error
 
 	chunks := lo.Chunk(trades, 1_000)
@@ -97,11 +136,11 @@ func (w *TradeWriter) flush(trades []stream.Trade) {
 
 	for _, chunkOfTrades := range chunks {
 		for _, t := range chunkOfTrades {
-			err = w.sender.Table("sip_observer_trades").
+			err = s.sender.Table("sip_observer_trades").
 				Symbol("ticker", t.Symbol).
 				Float64Column("price", t.Price).
 				Float64Column("size", float64(t.Size)).
-				TimestampColumn("trade_timestamp", t.Timestamp.UnixNano()).AtNow(w.ctx)
+				TimestampColumn("trade_timestamp", t.Timestamp.UnixMicro()).AtNow(s.ctx)
 
 			if err != nil {
 				log.Fatal(err)
@@ -110,14 +149,53 @@ func (w *TradeWriter) flush(trades []stream.Trade) {
 			c++
 		}
 
-		err = w.sender.Flush(w.ctx)
+		err = s.sender.Flush(s.ctx)
 
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	w.writtenCountLock.Lock()
-	w.writtenCount += c
-	defer w.writtenCountLock.Unlock()
+	s.tradeWrittenCountLock.Lock()
+	s.tradeWrittenCount += c
+	defer s.tradeWrittenCountLock.Unlock()
+}
+
+func (s *SIPWriter) flushBars(bars []stream.Bar) {
+	var err error
+
+	chunks := lo.Chunk(bars, 1_000)
+
+	var c int64
+
+	for _, chunkOfBars := range chunks {
+		for _, b := range chunkOfBars {
+			err = s.sender.Table("sip_observer_bars").
+				Symbol("ticker", b.Symbol).
+				Float64Column("o", b.Open).
+				Float64Column("h", b.High).
+				Float64Column("l", b.Low).
+				Float64Column("c", b.Close).
+				Float64Column("v", float64(b.Volume)).
+				Float64Column("vw", b.VWAP).
+				Float64Column("n", float64(b.TradeCount)).
+				TimestampColumn("bar_timestamp", b.Timestamp.UnixMicro()).AtNow(s.ctx)
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			c++
+		}
+
+		err = s.sender.Flush(s.ctx)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	s.barWrittenCountLock.Lock()
+	s.barWrittenCount += c
+	defer s.barWrittenCountLock.Unlock()
 }

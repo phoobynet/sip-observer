@@ -9,32 +9,20 @@ import (
 	"os"
 )
 
-type TradeReader struct {
-	key           string
-	secret        string
-	baseURL       string
+type SIPReader struct {
 	client        *stream.StocksClient
 	configuration *config.Config
 	ctx           context.Context
 }
 
-func NewTradeReader(ctx context.Context, configuration *config.Config) (*TradeReader, error) {
-	key := os.Getenv("APCA_API_KEY_ID")
-
-	if key == "" {
+func NewSIPReader(ctx context.Context, configuration *config.Config) (*SIPReader, error) {
+	if key := os.Getenv("APCA_API_KEY_ID"); key == "" {
 		return nil, errors.New("APCA_API_KEY_ID is not set")
+
 	}
 
-	secret := os.Getenv("APCA_API_SECRET_KEY")
-
-	if secret == "" {
+	if secret := os.Getenv("APCA_API_SECRET_KEY"); secret == "" {
 		return nil, errors.New("APCA_API_SECRET_KEY is not set")
-	}
-
-	baseURL := os.Getenv("APCA_API_BASE_URL")
-
-	if baseURL == "" {
-		return nil, errors.New("APCA_API_BASE_URL is not set")
 	}
 
 	client := stream.NewStocksClient(marketdata.SIP)
@@ -45,28 +33,33 @@ func NewTradeReader(ctx context.Context, configuration *config.Config) (*TradeRe
 		return nil, err
 	}
 
-	return &TradeReader{
-		key,
-		secret,
-		baseURL,
+	return &SIPReader{
 		client,
 		configuration,
 		ctx,
 	}, nil
 }
 
-func (r *TradeReader) Observe(streamingTradesChan chan stream.Trade) error {
-	return r.client.SubscribeToTrades(func(t stream.Trade) {
+func (r *SIPReader) Observe(streamingTradesChan chan stream.Trade, streamingBarsChan chan stream.Bar) error {
+	err := r.client.SubscribeToTrades(func(t stream.Trade) {
 		streamingTradesChan <- t
+	}, r.configuration.Symbols...)
+
+	if err != nil {
+		return err
+	}
+
+	return r.client.SubscribeToBars(func(b stream.Bar) {
+		streamingBarsChan <- b
 	}, r.configuration.Symbols...)
 }
 
-func (r *TradeReader) Disconnect() error {
+func (r *SIPReader) Disconnect() error {
 	err := r.client.UnsubscribeFromTrades(r.configuration.Symbols...)
 
 	if err != nil {
 		return err
 	}
 
-	return nil
+	return r.client.UnsubscribeFromBars(r.configuration.Symbols...)
 }

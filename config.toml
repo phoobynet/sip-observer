@@ -1,7 +1,9 @@
-title = "Everything"
+title = "NASDAQ 100"
 
 symbols = [
-    "*",
+   "*"
 ]
 
-db_host = "192.168.1.66:9009"
+db_host = "192.168.1.66"
+db_ilp_port = "9009"
+db_pg_port = "8812"

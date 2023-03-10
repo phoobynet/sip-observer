@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata/stream"
+	"github.com/phoobynet/sip-observer/assets"
 	"github.com/phoobynet/sip-observer/config"
 	"github.com/phoobynet/sip-observer/reader"
+	"github.com/phoobynet/sip-observer/snapshots"
 	"github.com/phoobynet/sip-observer/writer"
 	"log"
 	"os"
@@ -28,9 +30,13 @@ func main() {
 
 	log.Printf("Configuration: %+v\n\n", configuration)
 
+	allSymbols := assets.Load(context.TODO(), configuration)
+
+	snapshots.Load(context.TODO(), configuration, allSymbols)
+
 	readerCtx, readerCancel := context.WithCancel(context.Background())
 
-	tradeReader, err := reader.NewTradeReader(readerCtx, configuration)
+	sipReader, err := reader.NewSIPReader(readerCtx, configuration)
 
 	if err != nil {
 		log.Fatal(err)
@@ -38,34 +44,37 @@ func main() {
 
 	writerCtx, writerCancel := context.WithCancel(context.Background())
 
-	tradeWriter, err := writer.NewTradeWriter(writerCtx, configuration)
+	sipWriter, err := writer.NewSIPWriter(writerCtx, configuration)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	var streamingTradesChan = make(chan stream.Trade, 100_000)
+	var streamingBarsChan = make(chan stream.Bar, 20_000)
 
 	go func() {
-		err := tradeReader.Observe(streamingTradesChan)
+		err := sipReader.Observe(streamingTradesChan, streamingBarsChan)
 
 		if err != nil {
 			log.Fatal(err)
 		} else {
-			log.Println("Trade reader started")
+			log.Println("SIP observer started")
 		}
 
 		for {
 			select {
 			case t := <-streamingTradesChan:
-				tradeWriter.Write(t)
+				sipWriter.WriteTrade(t)
+			case b := <-streamingBarsChan:
+				sipWriter.WriteBar(b)
 			case <-readerCtx.Done():
-				log.Println("Shutting down sip-observer reader")
-				_ = tradeReader.Disconnect()
+				log.Println("Shutting down SIP Observer reader")
+				_ = sipReader.Disconnect()
 				return
 			case <-writerCtx.Done():
-				log.Println("Shutting down sip-observer writer")
-				_ = tradeWriter.Close()
+				log.Println("Shutting down SIP Observer writer")
+				_ = sipWriter.Close()
 				return
 			}
 		}
